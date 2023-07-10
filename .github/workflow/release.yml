@@ -1,0 +1,89 @@
+name: release
+
+on:
+  push:
+    paths:
+      - .github/workflows/release.yml
+      - wails-project/**
+    tags:
+      - 'v[0-9]+\.[0-9]+\.[0-9]+'
+    branches:
+      - master
+
+defaults:
+  run:
+    working-directory: wails-project
+
+jobs:
+  package:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Go
+        uses: actions/setup-go@v3
+        with:
+          go-version-file: wails-project/go.mod
+          cache: true
+          cache-dependency-path: wails-project/go.sum
+
+      - name: Compile frontend
+        run: npm install && npm run build
+        working-directory: wails-project/frontend
+
+      - name: Get Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build Wails for Windows
+        run: wails build -platform windows/amd64 -noPackage -o project-windows-amd64.exe
+
+      - name: Build Wails for MacOS
+        run: wails build -platform darwin/arm64 -noPackage -o project-macos-arm64
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env: 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: |
+            Changes in this release:
+            - ${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: false
+      
+      - name: Compress Windows File to Zip
+        run: |
+          cd build/bin
+          zip -r project-windows-amd64.zip project-windows-amd64.exe
+
+      - name: Upload Artifacts for Windows
+        uses: actions/upload-release-asset@v1
+        env: 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_name: project-windows-amd64.zip
+          asset_path: wails-project/build/bin/project-windows-amd64.zip
+          asset_content_type: application/zip
+
+      - name: Compress MacOs File to Tar
+        run: |
+          cd build/bin
+          tar -czvf project-macos-arm64.tar.gz project-macos-arm64
+      
+      - name: Upload Artifacts for MacOs
+        env: 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_name: project-macos-arm64.tar.gz
+          asset_path: wails-project/build/bin/project-macos-arm64.tar.gz
+          asset_content_type: application/tar
