@@ -3,7 +3,7 @@ name: release
 on:
   push:
     paths:
-      - .github/workflows/release.yml
+      - .github/workflow/release.yml
       - wails-project/**
     tags:
       - 'v[0-9]+\.[0-9]+\.[0-9]+'
